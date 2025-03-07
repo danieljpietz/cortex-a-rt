@@ -1,9 +1,12 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn, Lit, Expr, ExprLit, parse::Parse, parse::ParseStream, token::Comma, punctuated::Punctuated};
+use syn::{
+    Expr, ExprLit, ItemFn, Lit, parse::Parse, parse::ParseStream, parse_macro_input,
+    punctuated::Punctuated, token::Comma,
+};
 
-
-static ENTRIES: std::sync::OnceLock<std::sync::Mutex<Vec<(usize, String, String)>>> = std::sync::OnceLock::new();
+static ENTRIES: std::sync::OnceLock<std::sync::Mutex<Vec<(usize, String, String)>>> =
+    std::sync::OnceLock::new();
 
 struct EntryArgs {
     core_id: usize,
@@ -15,24 +18,44 @@ impl Parse for EntryArgs {
         let args = Punctuated::<Expr, Comma>::parse_terminated(input)?;
 
         if args.len() != 2 {
-            return Err(syn::Error::new_spanned(&args, "Expected two arguments: (core_id, stack_section)"));
+            return Err(syn::Error::new_spanned(
+                &args,
+                "Expected two arguments: (core_id, stack_section)",
+            ));
         }
 
         // Extract core_id (first argument)
-        let core_id = if let Some(&Expr::Lit(ExprLit { lit: Lit::Int(ref id), .. })) = args.first() {
+        let core_id = if let Some(&Expr::Lit(ExprLit {
+            lit: Lit::Int(ref id),
+            ..
+        })) = args.first()
+        {
             id.base10_parse::<usize>()?
         } else {
-            return Err(syn::Error::new_spanned(args.first().unwrap(), "First argument must be an integer core ID"));
+            return Err(syn::Error::new_spanned(
+                args.first().unwrap(),
+                "First argument must be an integer core ID",
+            ));
         };
 
         // Extract stack_section (second argument)
-        let stack_section = if let Some(&Expr::Lit(ExprLit { lit: Lit::Str(ref section), .. })) = args.iter().nth(1) {
+        let stack_section = if let Some(&Expr::Lit(ExprLit {
+            lit: Lit::Str(ref section),
+            ..
+        })) = args.iter().nth(1)
+        {
             section.value()
         } else {
-            return Err(syn::Error::new_spanned(args.iter().nth(1).unwrap(), "Second argument must be a string stack section"));
+            return Err(syn::Error::new_spanned(
+                args.iter().nth(1).unwrap(),
+                "Second argument must be a string stack section",
+            ));
         };
 
-        Ok(EntryArgs { core_id, stack_section })
+        Ok(EntryArgs {
+            core_id,
+            stack_section,
+        })
     }
 }
 
@@ -41,9 +64,11 @@ fn get_entries() -> &'static std::sync::Mutex<Vec<(usize, String, String)>> {
 }
 
 fn safe_entries_access() -> std::sync::MutexGuard<'static, Vec<(usize, String, String)>> {
-    get_entries().lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    get_entries()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
- 
+
 #[proc_macro_attribute]
 pub fn entry(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as EntryArgs);
@@ -55,7 +80,11 @@ pub fn entry(attr: TokenStream, item: TokenStream) -> TokenStream {
         panic!("Duplicate entry for core {}", args.core_id);
     }
 
-    entries.push((args.core_id, fn_name.to_string(), args.stack_section.clone()));
+    entries.push((
+        args.core_id,
+        fn_name.to_string(),
+        args.stack_section.clone(),
+    ));
 
     let fn_body = input_fn.block;
 
@@ -79,9 +108,7 @@ pub fn _start(_: TokenStream) -> TokenStream {
             proc_macro2::Span::call_site(),
         );
 
-        cmp_instructions.push(format!(
-            "cmp x0, #{core_id}\n    b.eq .L_core_{core_id}"
-        ));
+        cmp_instructions.push(format!("cmp x0, #{core_id}\n    b.eq .L_core_{core_id}"));
 
         core_labels.push(format!(
             ".L_core_{core_id}:\n\
